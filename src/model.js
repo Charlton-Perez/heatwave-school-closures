@@ -59,6 +59,18 @@ export const PARAM_DEFS = {
       + 'factor below).',
     source: { name: 'HM Treasury, The Green Book (value of time); ONS ASHE 2024', url: 'https://www.gov.uk/government/publications/the-green-book-appraisal-and-evaluation-in-central-government' },
   },
+  realizedDisruptionFraction: {
+    default: 0.50, min: 0, max: 1, step: 0.05, kind: 'percent', evidenced: true,
+    label: 'Realised disruption rate',
+    note: 'Share of supervision-weighted families who actually lose a day\'s work, rather '
+      + 'than arranging informal cover. The IEA\'s analysis of the 2022–23 UK strike wave '
+      + 'found that although 59% of parents surveyed said a school closure would force '
+      + 'them to work fewer hours or not at all, the author judged it conservative — and '
+      + 'still defensible — to assume only half of that group actually did so once faced '
+      + 'with a real (rather than hypothetical) closure. 50% is used here as the same '
+      + 'conservative halving, applied on top of the phase-based supervision factor.',
+    source: { name: 'IEA, "What are the real costs of the recent strike wave?"', url: 'https://iea.org.uk/what-are-the-real-costs-of-the-recent-strike-wave/' },
+  },
   childrenPerFamily: {
     default: 1.75, min: 1, max: 3, step: 0.05, kind: 'number', evidenced: true,
     label: 'School-age children per family',
@@ -123,8 +135,12 @@ export function perEventImpact(la, p) {
   const primAffected = (la.pupilsPrimary   ?? la.pupils) * p.schoolClosureFraction
   const secAffected  = (la.pupilsSecondary ?? 0)         * p.schoolClosureFraction
 
-  const familiesAffected = effectiveFamilies(primAffected, secAffected, p)
-  const economicImpact   = familiesAffected * p.costPerFamilyPerDay * p.redAlertDurationDays
+  // Supervision-weighted families, then discounted by the realised-disruption
+  // rate: many families arrange informal cover even when a child's school is
+  // shut, so not every supervision-weighted family actually loses a paid day.
+  const potentialFamilies = effectiveFamilies(primAffected, secAffected, p)
+  const familiesAffected  = potentialFamilies * p.realizedDisruptionFraction
+  const economicImpact    = familiesAffected * p.costPerFamilyPerDay * p.redAlertDurationDays
 
   // Learning: all affected pupils lose instruction regardless of age
   const learningDaysLost = pupilsAffected * p.redAlertDurationDays

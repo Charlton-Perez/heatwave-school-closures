@@ -40,6 +40,7 @@ All parameters are user-adjustable via the Sources & assumptions panel. They fal
 | Key | Default | Source |
 |---|---|---|
 | `costPerFamilyPerDay` | £145 | HM Treasury Green Book value of time; ONS ASHE 2024 median full-time earnings ≈ £146/day |
+| `realizedDisruptionFraction` | 0.50 | IEA, "What are the real costs of the recent strike wave?" (see §2.3a) |
 | `childrenPerFamily` | 1.75 | ONS Families and Households 2024 |
 | `schoolDaysPerYear` | 190 | DfE statutory minimum |
 
@@ -90,9 +91,21 @@ ks5Weighted  = secAffected × (2/7) × 0.05
 **Correction 2 — multiple children per household.** A household with two children at the same school generates one disruption event, not two. Dividing by `childrenPerFamily` converts effective weighted pupils into effective households:
 
 ```
-familiesAffected = (primWeighted + ks3Weighted + ks4Weighted + ks5Weighted)
-                   / childrenPerFamily
+potentialFamilies = (primWeighted + ks3Weighted + ks4Weighted + ks5Weighted)
+                     / childrenPerFamily
 ```
+
+### 2.3a Realised disruption
+
+Not every supervision-weighted family actually loses a paid working day — many arrange informal cover (a relative, a neighbour, a remote-work adjustment) even when a child's school is shut. `potentialFamilies` is therefore discounted by `realizedDisruptionFraction` (default 0.50) to give the final `familiesAffected` used for costing:
+
+```
+familiesAffected = potentialFamilies × realizedDisruptionFraction
+```
+
+This mirrors the IEA's own analysis of the 2022–23 UK strike wave ("What are the real costs of the recent strike wave?", iea.org.uk): an ONS-style survey found 59% of parents said a school closure would force them to work fewer hours or not at all, but the author judged it conservative to assume only half of that group actually did so once faced with a real closure. The dashboard applies the same 50% halving on top of the phase-based supervision discount above, rather than in place of it.
+
+A sense-check against the IEA's own headline number (≈£180m per national school-strike day, 2023 prices) supports this: scaling the dashboard's model to a hypothetical full nationwide one-day closure at the current £145/day wage and *without* a realised-disruption discount would predict a cost roughly 2.4–3.5× the IEA's inflation-adjusted figure. Solving for the realisation rate implied by the IEA's own numbers gives ≈29% — close to the 50% figure used here (50% is the IEA author's own stated assumption; ≈29% is the rate implied if their headline figure is taken at face value). 50% was kept as the default since it is the rate the source explicitly states, rather than a back-solved figure.
 
 ### 2.4 Economic cost
 

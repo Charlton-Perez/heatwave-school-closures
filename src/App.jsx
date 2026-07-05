@@ -195,15 +195,26 @@ export default function App(){
 
   const topEconomic=useMemo(()=>[...perLA].sort((a,b)=>b.economic-a.economic).slice(0,15),[perLA]);
 
-  // annual impact across all warming levels for the selected set (climate chart)
+  // impact per DECADE across all warming levels for the selected set.
+  // Cost & learning are totals across the selected LAs; the event count is an
+  // AVERAGE per authority — summing per-LA event rates would double-count a
+  // single heatwave that hits many authorities at once.
+  const DECADE=10;
+  const nLA=selLAs.length||1;
   const levelSeries=useMemo(()=>LEVELS.map(L=>{
     const t=annualTotals(selLAs,L.key,params);
-    return {level:L.label,key:L.key,economic:t.annualEconomic,
-      learning:t.annualLearning,events:t.redEventsPerYear};
-  }),[selLAs,params]);
+    return {level:L.label,key:L.key,
+      economic:t.annualEconomic*DECADE,
+      learning:t.annualLearning*DECADE,
+      eventsPerAuth:(t.redEventsPerYear/nLA)*DECADE};
+  }),[selLAs,params,nLA]);
 
+  const decade={
+    economic:annual.annualEconomic*DECADE,
+    learning:annual.annualLearning*DECADE,
+    eventsPerAuth:(annual.redEventsPerYear/nLA)*DECADE,
+  };
   const yearsEq=learningYearsEquivalent(single.learningDaysLost,single.pupilsAffected,params.schoolDaysPerYear);
-  const annualYearsEq=learningYearsEquivalent(annual.annualLearning,single.pupilsAffected,params.schoolDaysPerYear);
   const baseEconomic=levelSeries.find(l=>l.key==="0.61")?.economic||0;
   const gwlEconomic=levelSeries.find(l=>l.key===gwl)?.economic||0;
 
@@ -258,7 +269,7 @@ export default function App(){
         {tab==="single"?(
           <SingleTab {...{single,perLA,topEconomic,sortedTable,tableSort,setTableSort,yearsEq,selLAs,params}}/>
         ):(
-          <ClimateTab {...{annual,levelSeries,gwl,setGwl,annualYearsEq,baseEconomic,gwlEconomic,selLAs,params,single}}/>
+          <ClimateTab {...{decade,levelSeries,gwl,setGwl,baseEconomic,gwlEconomic,selLAs,params}}/>
         )}
 
         {/* Sources & assumptions */}
@@ -359,12 +370,13 @@ function SingleTab({single,topEconomic,sortedTable,tableSort,setTableSort,yearsE
 }
 
 // ── Climate tab ──────────────────────────────────────────────────────────────
-function ClimateTab({annual,levelSeries,gwl,setGwl,annualYearsEq,baseEconomic,gwlEconomic,selLAs,params}){
+function ClimateTab({decade,levelSeries,gwl,setGwl,baseEconomic,gwlEconomic,selLAs,params}){
   const multiplier=baseEconomic>0?(gwlEconomic/baseEconomic):null;
+  const lvl=LEVELS.find(l=>l.key===gwl);
   return(
     <>
-      <SectionTitle title="Annual impact at a given level of global warming"
-        sub="Projected amber-alert frequency × your escalation & closure assumptions, per year"/>
+      <SectionTitle title="Impact per decade at a given level of global warming"
+        sub="Projected amber-alert frequency × your escalation & closure assumptions, totalled over 10 years"/>
 
       <Panel style={{marginBottom:14}}>
         <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>Global warming level (above pre-industrial)</div>
@@ -376,16 +388,16 @@ function ClimateTab({annual,levelSeries,gwl,setGwl,annualYearsEq,baseEconomic,gw
       </Panel>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}}>
-        <Stat label="Red closure events / yr" value={evn(annual.redEventsPerYear||0)} color={LVL_COLOR[gwl]} sub="across selected LAs"/>
-        <Stat label="Annual economic cost" value={gbp(annual.annualEconomic||0)} color={C.red}/>
-        <Stat label="Annual learning lost" value={num(annual.annualLearning||0)} color={C.purple} sub="pupil-days / yr"/>
+        <Stat label="Closures per authority / decade" value={evn(decade.eventsPerAuth||0)} color={LVL_COLOR[gwl]} sub={`avg across ${selLAs.length} LAs`}/>
+        <Stat label="Economic cost / decade" value={gbp(decade.economic||0)} color={C.red} sub="all selected LAs"/>
+        <Stat label="Learning lost / decade" value={num(decade.learning||0)} color={C.purple} sub="pupil-days"/>
         <Stat label="vs recent climate" value={multiplier?`${multiplier.toFixed(1)}×`:"—"} color={C.amber} sub="economic cost"/>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"3fr 2fr",gap:12,marginBottom:12}}>
         <Panel>
           <div style={{fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:14}}>
-            Annual economic cost across warming levels
+            Economic cost per decade across warming levels
           </div>
           <ResponsiveContainer width="100%" height={320}>
             <BarChart data={levelSeries} margin={{top:5,right:20,left:12,bottom:5}}>
@@ -393,7 +405,7 @@ function ClimateTab({annual,levelSeries,gwl,setGwl,annualYearsEq,baseEconomic,gw
               <XAxis dataKey="level" stroke={C.muted} tick={{fontSize:11,fill:C.muted}}/>
               <YAxis stroke={C.muted} tick={{fontSize:11,fill:C.muted}} tickFormatter={gbp}/>
               <Tooltip content={<Tip fmt={gbp}/>} cursor={{fill:"#ffffff08"}}/>
-              <Bar dataKey="economic" name="Annual economic cost" radius={[3,3,0,0]}>
+              <Bar dataKey="economic" name="Economic cost / decade" radius={[3,3,0,0]}>
                 {levelSeries.map(l=><Cell key={l.key} fill={LVL_COLOR[l.key]} opacity={l.key===gwl?1:0.5}/>)}
               </Bar>
             </BarChart>
@@ -401,26 +413,26 @@ function ClimateTab({annual,levelSeries,gwl,setGwl,annualYearsEq,baseEconomic,gw
         </Panel>
         <Panel>
           <div style={{fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:14}}>
-            Red closure events per year
+            Red closures per authority · per decade
           </div>
           <ResponsiveContainer width="100%" height={320}>
             <LineChart data={levelSeries} margin={{top:5,right:20,left:6,bottom:5}}>
               <CartesianGrid stroke={C.border} strokeDasharray="3 3"/>
               <XAxis dataKey="level" stroke={C.muted} tick={{fontSize:11,fill:C.muted}}/>
               <YAxis stroke={C.muted} tick={{fontSize:11,fill:C.muted}}/>
-              <Tooltip content={<Tip fmt={num}/>}/>
-              <Line type="monotone" dataKey="events" name="Red events / yr" stroke={C.accent} strokeWidth={2.5} dot={{fill:C.accent,r:4}}/>
+              <Tooltip content={<Tip fmt={evn}/>}/>
+              <Line type="monotone" dataKey="eventsPerAuth" name="Closures / authority / decade" stroke={C.accent} strokeWidth={2.5} dot={{fill:C.accent,r:4}}/>
             </LineChart>
           </ResponsiveContainer>
         </Panel>
       </div>
 
       <Panel style={{fontSize:12,color:C.muted,lineHeight:1.7}}>
-        At <b style={{color:LVL_COLOR[gwl]}}>{LEVELS.find(l=>l.key===gwl)?.label}</b> of warming, the {selLAs.length} selected
-        local authorities would see about <b style={{color:C.text}}>{evn(annual.redEventsPerYear||0)}</b> red-alert closure
-        events per year (assuming {Math.round(params.amberToRedFraction*100)}% of amber alerts escalate), costing
-        <b style={{color:C.red}}> {gbp(annual.annualEconomic||0)}</b> and <b style={{color:C.purple}}>{num(annual.annualLearning||0)} pupil-days </b>
-        of lost learning annually{multiplier?<> — <b style={{color:C.amber}}>{multiplier.toFixed(1)}×</b> the recent-climate cost</>:null}.
+        At <b style={{color:LVL_COLOR[gwl]}}>{lvl?.label}</b> of warming, a typical selected authority would face about
+        <b style={{color:C.text}}> {evn(decade.eventsPerAuth||0)}</b> red-alert school closures per decade
+        (assuming {Math.round(params.amberToRedFraction*100)}% of amber alerts escalate). Across all {selLAs.length} selected
+        authorities that totals <b style={{color:C.red}}>{gbp(decade.economic||0)}</b> and <b style={{color:C.purple}}>{num(decade.learning||0)} pupil-days </b>
+        of lost learning per decade{multiplier?<> — <b style={{color:C.amber}}>{multiplier.toFixed(1)}×</b> the recent-climate cost</>:null}.
       </Panel>
     </>
   );

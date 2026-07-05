@@ -378,7 +378,7 @@ function SingleTab({single,topEconomic,yearsEq,selLAs,params,footprint}){
         <Stat label="Schools closed" value={int(single.schoolsClosed||0)} color={C.accent}/>
         <Stat label="Pupils affected" value={num(single.pupilsAffected||0)} color={C.amber}/>
         <Stat label="Families disrupted" value={num(single.familiesAffected||0)} color={C.teal}
-          sub={`phase, sibling & ${Math.round(params.realizedDisruptionFraction*100)}% realised`}/>
+          sub="phase & sibling adjusted"/>
         <Stat label="Economic cost" value={gbp(single.economicImpact||0)} color={C.red}
           sub={`over ${params.redAlertDurationDays} day${params.redAlertDurationDays>1?"s":""}`}/>
       </div>
@@ -416,12 +416,12 @@ function SingleTab({single,topEconomic,yearsEq,selLAs,params,footprint}){
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <Panel>
             <div style={{fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>What this means</div>
-            <Bullet c={C.red} k="Economic" v={`${gbp(single.economicImpact||0)} in lost working time — valued at the Green Book opportunity cost of a caregiver's day. Families are counted once per household (sibling discount applied), weighted by phase, then discounted again for realised disruption — many families arrange informal cover even when a school is shut.`}/>
+            <Bullet c={C.red} k="Economic" v={`${gbp(single.economicImpact||0)} in lost working time — valued at the Green Book opportunity cost of a caregiver's day. Families are counted once per household (sibling discount applied) and weighted by phase, so secondary-age pupils attract a lower cost than primary-age.`}/>
             <Bullet c={C.purple} k="Learning" v={`${daysLost} day${daysLost>1?"s":""} of instruction lost per affected pupil — ${yearPct}% of the statutory school year (${weeksLost} week${weeksLost==="1.0"?"":"s"} equivalent). Every affected pupil loses the same number of days regardless of age.`}/>
-            <Bullet c={C.teal} k="Households" v={`${num(single.familiesAffected||0)} families actually lose a working day — adjusted for multiple children, the lower supervision need of older pupils, and the ${Math.round(params.realizedDisruptionFraction*100)}% realised-disruption rate.`}/>
+            <Bullet c={C.teal} k="Households" v={`${num(single.familiesAffected||0)} families need to arrange care — adjusted for multiple children and for the lower supervision need of older secondary pupils.`}/>
           </Panel>
           <Panel style={{fontSize:11,color:C.muted,lineHeight:1.6}}>
-            <b style={{color:C.text}}>Supervision discount:</b> Primary-age pupils (R–Y6) and SEND pupils require full caregiver cover (factor 1.0). Y7–9 partial ({Math.round(params.supervisionDiscountKS3*100)}%). Y10–11 low (20%). Sixth form minimal (5%). <b style={{color:C.text}}>Realised disruption:</b> only {Math.round(params.realizedDisruptionFraction*100)}% of those supervision-weighted families are assumed to actually lose paid work, following IEA analysis of the 2022–23 strike wave. The economic cost reflects this doubly-adjusted family count, not raw pupil count.
+            <b style={{color:C.text}}>Supervision discount:</b> Primary-age pupils (R–Y6) and SEND pupils require full caregiver cover (factor 1.0). Y7–9 partial ({Math.round(params.supervisionDiscountKS3*100)}%). Y10–11 low (20%). Sixth form minimal (5%). The economic cost reflects effective family disruption, not raw pupil count.
           </Panel>
         </div>
       </div>

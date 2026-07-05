@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.vercel
+__pycache__/
+*.pyc
+# Raw source extracts are large / re-downloadable; the built JSON is committed.
+data/raw/edubasealldata*.csv

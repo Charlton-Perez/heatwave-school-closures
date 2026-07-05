@@ -39,7 +39,7 @@ All parameters are user-adjustable via the Sources & assumptions panel. They fal
 
 | Key | Default | Source |
 |---|---|---|
-| `costPerFamilyPerDay` | £145 | HM Treasury Green Book value of time; ONS ASHE 2024 median full-time earnings ≈ £146/day (supersedes the earlier £70 Coram childcare proxy) |
+| `costPerFamilyPerDay` | £145 | HM Treasury Green Book value of time; ONS ASHE 2024 median full-time earnings ≈ £146/day |
 | `childrenPerFamily` | 1.75 | ONS Families and Households 2024 |
 | `schoolDaysPerYear` | 190 | DfE statutory minimum |
 
@@ -215,7 +215,9 @@ The amber alert frequencies at each GWL come from the UKCRI file `heathealth_nul
 
 **Amber-to-red escalation is uniform.** The `amberToRedFraction` parameter is applied uniformly across all LAs and all GWLs. In reality, escalation probability likely increases with warming (hotter events are more likely to tip into red), and varies by region. The model holds this fraction constant as a scenario assumption.
 
-**`costPerFamilyPerDay` is a combined proxy.** It collapses lost earnings and replacement childcare into one figure. Families who cannot arrange childcare and lose a full day's work face a higher effective cost; families with informal care networks face a lower cost. The Coram survey range (£47–£95) reflects this spread; £70 is a mid-range default.
+**`costPerFamilyPerDay` values the caregiver's time, not childcare spend.** It is the Green Book opportunity cost of a lost working day at the ONS median full-time wage, applied to the supervision-weighted family count. It does not vary by region or income band, and does not distinguish paid replacement care from unpaid lost productivity — both are treated as an equivalent loss of economic output.
+
+**Recent-climate baseline understates current warming.** UK-CRI's own methodology states the observed 1981–2010 period was 0.61°C warmer than the 1850–1900 pre-industrial average. Because the climate has continued to warm since 2010, the true present-day warming level is higher than this baseline figure — the "Recent climate" card in the dashboard carries an explicit footnote to this effect.
 
 ---
 

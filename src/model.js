@@ -2,13 +2,23 @@
 // No React here; everything is unit-testable plain functions.
 
 // Warming-level toggle metadata (keys match localAuthorities.json `amber`).
+// The "0.61" baseline is UK-CRI's own figure for how much warmer the 1981-2010
+// observed-climate period was than the 1850-1900 pre-industrial average — see
+// BASELINE_NOTE below for the important caveat that the climate has warmed
+// further in the ~15 years since that period ended.
 export const LEVELS = [
-  { key: '0.61', label: 'Recent', sub: '≈0.6°C', short: 'Recent' },
+  { key: '0.61', label: 'Recent climate', sub: '0.61°C vs pre-industrial', short: 'Recent' },
   { key: '1.5',  label: '1.5°C',  sub: 'Paris lower', short: '1.5°C' },
   { key: '2',    label: '2°C',    sub: 'Paris upper',  short: '2°C' },
   { key: '3',    label: '3°C',    sub: 'current-policy', short: '3°C' },
   { key: '4',    label: '4°C',    sub: 'high emissions', short: '4°C' },
 ]
+
+// Shown as a footnote on the warming-level card.
+export const BASELINE_NOTE = 'Recent climate = the observed 1981–2010 period, which '
+  + 'UK-CRI\'s own methodology states was 0.61°C warmer than the 1850–1900 pre-industrial '
+  + 'average. The climate has continued to warm in the ~15 years since that period ended, '
+  + 'so the true current warming level is higher than this baseline figure.'
 
 // Default parameters. `evidenced` distinguishes sourced figures from scenario
 // assumptions; the UI renders these with their citations.
@@ -46,9 +56,7 @@ export const PARAM_DEFS = {
       + 'Treasury Green Book guidance on valuing time (lost output at the market wage). '
       + 'Anchored to ONS ASHE 2024 median full-time gross earnings of £728/week '
       + '(≈ £146/day). Applied only to supervision-adjusted families (see the supervision '
-      + 'factor). This supersedes the earlier childcare-replacement proxy (Coram Childcare '
-      + 'Survey 2025, ≈ £47–£95/day), which captured only paid substitute care rather than '
-      + 'lost economic output.',
+      + 'factor below).',
     source: { name: 'HM Treasury, The Green Book (value of time); ONS ASHE 2024', url: 'https://www.gov.uk/government/publications/the-green-book-appraisal-and-evaluation-in-central-government' },
   },
   childrenPerFamily: {

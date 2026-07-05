@@ -3,7 +3,7 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Cell, Legend } from "recharts";
 import DATA from "./data/localAuthorities.json";
 import {
-  LEVELS, PARAM_DEFS, LEARNING_SOURCE, defaultParams,
+  LEVELS, PARAM_DEFS, LEARNING_SOURCE, BASELINE_NOTE, defaultParams,
   perEventImpact, annualImpact, singleEventTotals, annualTotals,
   learningYearsEquivalent, careerLearningLoss, decadeLearningLoss,
 } from "./model.js";
@@ -446,6 +446,11 @@ function ClimateTab({decade,levelSeries,gwl,setGwl,baseEconomic,gwlEconomic,selL
             <Seg key={L.key} label={L.label} sub={L.sub} active={gwl===L.key} onClick={()=>setGwl(L.key)} color={LVL_COLOR[L.key]}/>
           ))}
         </div>
+        {gwl==="0.61"&&(
+          <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`,color:C.muted,fontSize:11,lineHeight:1.55}}>
+            {BASELINE_NOTE}
+          </div>
+        )}
       </Panel>
 
       {/* Economic stats */}

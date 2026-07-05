@@ -102,6 +102,8 @@ economicImpact = familiesAffected × costPerFamilyPerDay × redAlertDurationDays
 
 `costPerFamilyPerDay` is valued as the **opportunity cost of the caregiver's lost day** following HM Treasury Green Book guidance on the value of time (lost output at the market wage), anchored to ONS ASHE 2024 median full-time earnings (≈ £146/day). This supersedes the earlier childcare-replacement proxy, which valued only paid substitute care rather than lost economic output. It is applied only to the supervision-weighted family count, not to raw pupils — so the phase discount is already embedded before this multiplication.
 
+**This is an upper-bound estimate, by design.** The supervision-weighted family count assumes every family that needs supervision is unable to arrange informal cover (a relative, a neighbour, another parent already at home). Real families often share care between households during a closure, which would reduce the realised economic cost below this figure. There is no robust UK evidence quantifying how much mutual support actually offsets disruption, so the model deliberately does not apply a further discount for it — the age-based supervision factor is left as the ceiling, adjustable downward as a modelling assumption rather than backed by a further "realised disruption" parameter.
+
 ---
 
 ## 3. Single-event learning impact

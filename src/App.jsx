@@ -378,7 +378,7 @@ function SingleTab({single,topEconomic,yearsEq,selLAs,params,footprint}){
         <Stat label="Schools closed" value={int(single.schoolsClosed||0)} color={C.accent}/>
         <Stat label="Pupils affected" value={num(single.pupilsAffected||0)} color={C.amber}/>
         <Stat label="Families disrupted" value={num(single.familiesAffected||0)} color={C.teal}
-          sub="phase & sibling adjusted"/>
+          sub="phase & sibling adjusted · upper bound"/>
         <Stat label="Economic cost" value={gbp(single.economicImpact||0)} color={C.red}
           sub={`over ${params.redAlertDurationDays} day${params.redAlertDurationDays>1?"s":""}`}/>
       </div>
@@ -422,6 +422,8 @@ function SingleTab({single,topEconomic,yearsEq,selLAs,params,footprint}){
           </Panel>
           <Panel style={{fontSize:11,color:C.muted,lineHeight:1.6}}>
             <b style={{color:C.text}}>Supervision discount:</b> Primary-age pupils (R–Y6) and SEND pupils require full caregiver cover (factor 1.0). Y7–9 partial ({Math.round(params.supervisionDiscountKS3*100)}%). Y10–11 low (20%). Sixth form minimal (5%). The economic cost reflects effective family disruption, not raw pupil count.
+            <br/><br/>
+            <b style={{color:C.text}}>This is an upper-bound estimate.</b> It assumes every supervision-weighted family is unable to arrange informal cover (a relative, a neighbour, another parent already at home). In practice some families share care between households, which would reduce the realised cost below this figure — but there is no robust UK evidence on the extent of that mutual support, so no further discount is applied here. Treat this as a ceiling you can scale down as a modelling choice, not a point estimate.
           </Panel>
         </div>
       </div>

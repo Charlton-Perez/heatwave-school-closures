@@ -5,11 +5,27 @@ import DATA from "./data/localAuthorities.json";
 import {
   LEVELS, PARAM_DEFS, LEARNING_SOURCE, defaultParams,
   perEventImpact, annualImpact, singleEventTotals, annualTotals,
-  learningYearsEquivalent,
+  learningYearsEquivalent, careerLearningLoss, decadeLearningLoss,
 } from "./model.js";
 
-const LAS = DATA.localAuthorities;
+const LAS  = DATA.localAuthorities;
 const META = DATA.meta;
+
+// ── regions (the 9 English regions UKHSA uses for heat-health alerts) ─────────
+const REGION_ORDER = ["London","South East","East of England","South West",
+  "West Midlands","East Midlands","Yorkshire and The Humber","North West","North East"];
+const REGIONS = REGION_ORDER.filter(r=>(META.regions||[]).includes(r));
+const REGION_SHORT = {
+  "Yorkshire and The Humber":"Yorks & Humber","East of England":"East of England",
+  "West Midlands":"W Midlands","East Midlands":"E Midlands","South East":"South East",
+  "South West":"South West","North West":"North West","North East":"North East","London":"London",
+};
+const REGION_LAS = Object.fromEntries(
+  REGIONS.map(r=>[r, LAS.filter(l=>l.region===r).map(l=>l.dfeCode)])
+);
+// Default event footprint: the common serious-heat footprint (south + capital).
+const DEFAULT_REGIONS = ["South East","London"];
+const DEFAULT_SELECTED = LAS.filter(l=>DEFAULT_REGIONS.includes(l.region)).map(l=>l.dfeCode);
 
 // ── palette / theme (house style) ───────────────────────────────────────────
 const C = {
@@ -17,7 +33,6 @@ const C = {
   accent:"#fb923c",amber:"#fbbf24",red:"#f87171",green:"#34d399",teal:"#2dd4bf",
   blue:"#38bdf8",purple:"#a78bfa",
 };
-// warming-level colours (cool → hot)
 const LVL_COLOR = {"0.61":"#38bdf8","1.5":"#fbbf24","2":"#fb923c","3":"#f87171","4":"#dc2626"};
 const PAL = ["#fb923c","#f87171","#fbbf24","#38bdf8","#a78bfa","#34d399","#2dd4bf",
              "#e879f9","#60a5fa","#f472b6","#a3e635","#facc15","#818cf8","#4ade80"];
@@ -38,7 +53,6 @@ const num = n=>{
   return Math.round(n).toLocaleString();
 };
 const int = n=>Math.round(n).toLocaleString();
-// event counts can be small fractions (one small LA) or large (all LAs)
 const evn = n=>{
   if(n==null||isNaN(n))return"—";
   if(n===0)return"0";
@@ -46,6 +60,7 @@ const evn = n=>{
   if(n<10)return n.toFixed(1);
   return Math.round(n).toLocaleString();
 };
+const dp1 = n=>(n==null||isNaN(n))?"—":n.toFixed(1);
 
 // ── little UI atoms ──────────────────────────────────────────────────────────
 const Panel=({children,style})=>(
@@ -154,6 +169,42 @@ function LASelector({selected,onChange}){
 const miniBtn={background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,
   padding:"5px 10px",color:C.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit"};
 
+// ── region selector: which regions are under the red alert (event footprint) ──
+function RegionSelector({selected,onChange}){
+  const sel=new Set(selected);
+  const isActive=r=>REGION_LAS[r].length>0 && REGION_LAS[r].every(c=>sel.has(c));
+  const isPartial=r=>!isActive(r) && REGION_LAS[r].some(c=>sel.has(c));
+  const toggle=r=>{
+    const codes=REGION_LAS[r];
+    if(isActive(r)) onChange(selected.filter(c=>!codes.includes(c)));
+    else onChange([...new Set([...selected,...codes])]);
+  };
+  return(
+    <div style={{flex:1,minWidth:260}}>
+      <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,
+        display:"flex",gap:10,alignItems:"center"}}>
+        <span>Regions under red alert</span>
+        <button onClick={()=>onChange(LAS.map(l=>l.dfeCode))} style={{...miniBtn,padding:"2px 8px",fontSize:10}}>All England</button>
+        <button onClick={()=>onChange([])} style={{...miniBtn,padding:"2px 8px",fontSize:10}}>Clear</button>
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {REGIONS.map(r=>{
+          const on=isActive(r), part=isPartial(r);
+          return(
+            <button key={r} onClick={()=>toggle(r)} title={`${r} · ${REGION_LAS[r].length} LAs`} style={{
+              background:on?C.red:"transparent",
+              border:`1px solid ${on?C.red:part?C.amber:C.border}`,
+              color:on?"#0a0f1c":part?C.amber:C.muted,
+              borderRadius:16,padding:"5px 11px",fontSize:11,cursor:"pointer",
+              fontFamily:"inherit",fontWeight:on?600:400,transition:"all .15s",
+            }}>{REGION_SHORT[r]||r}{part?" ◐":""}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── slider control ───────────────────────────────────────────────────────────
 function Slider({label,value,onChange,min,max,step,fmtVal,color=C.accent,width=150}){
   return(
@@ -172,13 +223,25 @@ function Slider({label,value,onChange,min,max,step,fmtVal,color=C.accent,width=1
 export default function App(){
   const [tab,setTab]=useState("single");
   const [params,setParams]=useState(defaultParams());
-  const [selected,setSelected]=useState(LAS.map(l=>l.dfeCode));
+  const [selected,setSelected]=useState(DEFAULT_SELECTED);
   const [gwl,setGwl]=useState("2");
   const set=(k,v)=>setParams(p=>({...p,[k]:v}));
 
   const selLAs=useMemo(()=>{
     const s=new Set(selected);
     return LAS.filter(l=>s.has(l.dfeCode));
+  },[selected]);
+
+  // Human-readable description of the event footprint (which regions are covered)
+  const footprint=useMemo(()=>{
+    const s=new Set(selected);
+    const full=REGIONS.filter(r=>REGION_LAS[r].length&&REGION_LAS[r].every(c=>s.has(c)));
+    const partial=REGIONS.filter(r=>!full.includes(r)&&REGION_LAS[r].some(c=>s.has(c)));
+    if(full.length===REGIONS.length) return "all England";
+    if(full.length===0&&partial.length===0) return "no regions";
+    const parts=full.map(r=>REGION_SHORT[r]||r);
+    if(partial.length) parts.push(`part of ${partial.map(r=>REGION_SHORT[r]||r).join(", ")}`);
+    return parts.join(" + ");
   },[selected]);
 
   const single=useMemo(()=>singleEventTotals(selLAs,params),[selLAs,params]);
@@ -189,16 +252,13 @@ export default function App(){
     const e=perEventImpact(l,params);
     const a=annualImpact(l,gwl,params);
     return {name:l.laName,dfeCode:l.dfeCode,schools:l.schools,pupils:l.pupils,
-      schoolsClosed:e.schoolsClosed,economic:e.economicImpact,pupilDays:e.learningDaysLost,
-      amber:a.amberPerYear,annualEconomic:a.annualEconomic};
+      schoolsClosed:e.schoolsClosed,families:e.familiesAffected,economic:e.economicImpact,
+      pupilDays:e.learningDaysLost,amber:a.amberPerYear,annualEconomic:a.annualEconomic};
   }),[selLAs,params,gwl]);
 
   const topEconomic=useMemo(()=>[...perLA].sort((a,b)=>b.economic-a.economic).slice(0,15),[perLA]);
 
-  // impact per DECADE across all warming levels for the selected set.
-  // Cost & learning are totals across the selected LAs; the event count is an
-  // AVERAGE per authority — summing per-LA event rates would double-count a
-  // single heatwave that hits many authorities at once.
+  // decade impact across all warming levels
   const DECADE=10;
   const nLA=selLAs.length||1;
   const levelSeries=useMemo(()=>LEVELS.map(L=>{
@@ -214,6 +274,20 @@ export default function App(){
     learning:annual.annualLearning*DECADE,
     eventsPerAuth:(annual.redEventsPerYear/nLA)*DECADE,
   };
+
+  // Career and decade learning loss (climate tab)
+  const careerLoss=useMemo(()=>
+    selLAs.length===0 ? 0 :
+    selLAs.reduce((sum,la)=>sum+careerLearningLoss(la,gwl,params),0)/selLAs.length
+  ,[selLAs,gwl,params]);
+
+  const decadeLoss=useMemo(()=>
+    selLAs.reduce((sum,la)=>sum+decadeLearningLoss(la,gwl,params)*la.pupils,0)
+  ,[selLAs,gwl,params]);
+
+  // career loss expressed as fraction of a school year
+  const careerYearFraction=careerLoss/params.schoolDaysPerYear;
+
   const yearsEq=learningYearsEquivalent(single.learningDaysLost,single.pupilsAffected,params.schoolDaysPerYear);
   const baseEconomic=levelSeries.find(l=>l.key==="0.61")?.economic||0;
   const gwlEconomic=levelSeries.find(l=>l.key===gwl)?.economic||0;
@@ -246,20 +320,27 @@ export default function App(){
         </div>
       </div>
 
-      {/* Shared closure-parameter bar (visible on both tabs) */}
+      {/* Shared closure-parameter + event-footprint bar */}
       <div style={{background:"#090c18",borderBottom:`1px solid ${C.border}`,padding:"14px 28px"}}>
-        <div style={{maxWidth:1200,margin:"0 auto",display:"flex",gap:26,flexWrap:"wrap",alignItems:"flex-end"}}>
-          <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.09em",alignSelf:"center"}}>
-            Closure<br/>scenario
+        <div style={{maxWidth:1200,margin:"0 auto",display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{display:"flex",gap:26,flexWrap:"wrap",alignItems:"flex-end"}}>
+            <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.09em",alignSelf:"center"}}>
+              Closure<br/>scenario
+            </div>
+            <Slider label="Red alert duration" value={params.redAlertDurationDays} min={1} max={7} step={1}
+              onChange={v=>set("redAlertDurationDays",v)} fmtVal={v=>`${v} day${v>1?"s":""}`} color={C.red}/>
+            <Slider label="Schools closing on red" value={params.schoolClosureFraction} min={0} max={1} step={0.05}
+              onChange={v=>set("schoolClosureFraction",v)} fmtVal={v=>`${Math.round(v*100)}%`} color={C.accent}/>
+            <Slider label="Amber → red escalation" value={params.amberToRedFraction} min={0} max={1} step={0.05}
+              onChange={v=>set("amberToRedFraction",v)} fmtVal={v=>`${Math.round(v*100)}%`} color={C.amber}/>
           </div>
-          <Slider label="Red alert duration" value={params.redAlertDurationDays} min={1} max={7} step={1}
-            onChange={v=>set("redAlertDurationDays",v)} fmtVal={v=>`${v} day${v>1?"s":""}`} color={C.red}/>
-          <Slider label="Schools closing on red" value={params.schoolClosureFraction} min={0} max={1} step={0.05}
-            onChange={v=>set("schoolClosureFraction",v)} fmtVal={v=>`${Math.round(v*100)}%`} color={C.accent}/>
-          <Slider label="Amber → red escalation" value={params.amberToRedFraction} min={0} max={1} step={0.05}
-            onChange={v=>set("amberToRedFraction",v)} fmtVal={v=>`${Math.round(v*100)}%`} color={C.amber}/>
-          <div style={{marginLeft:"auto",alignSelf:"center"}}>
-            <LASelector selected={selected} onChange={setSelected}/>
+          <div style={{display:"flex",gap:20,flexWrap:"wrap",alignItems:"flex-end",
+            borderTop:`1px solid ${C.border}`,paddingTop:14}}>
+            <RegionSelector selected={selected} onChange={setSelected}/>
+            <div style={{alignSelf:"flex-end"}}>
+              <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Refine authorities</div>
+              <LASelector selected={selected} onChange={setSelected}/>
+            </div>
           </div>
         </div>
       </div>
@@ -267,9 +348,10 @@ export default function App(){
       <div style={{maxWidth:1200,margin:"0 auto",padding:"18px 28px"}}>
 
         {tab==="single"?(
-          <SingleTab {...{single,perLA,topEconomic,sortedTable,tableSort,setTableSort,yearsEq,selLAs,params}}/>
+          <SingleTab {...{single,perLA,topEconomic,sortedTable,tableSort,setTableSort,yearsEq,selLAs,params,footprint}}/>
         ):(
-          <ClimateTab {...{decade,levelSeries,gwl,setGwl,baseEconomic,gwlEconomic,selLAs,params}}/>
+          <ClimateTab {...{decade,levelSeries,gwl,setGwl,baseEconomic,gwlEconomic,selLAs,params,footprint,
+            careerLoss,careerYearFraction,decadeLoss}}/>
         )}
 
         {/* Sources & assumptions */}
@@ -284,17 +366,36 @@ export default function App(){
 }
 
 // ── Single-event tab ─────────────────────────────────────────────────────────
-function SingleTab({single,topEconomic,sortedTable,tableSort,setTableSort,yearsEq,selLAs,params}){
+function SingleTab({single,topEconomic,sortedTable,tableSort,setTableSort,yearsEq,selLAs,params,footprint}){
+  const daysLost = params.redAlertDurationDays;
+  const yearPct  = (daysLost / params.schoolDaysPerYear * 100).toFixed(1);
+  const weeksLost = (daysLost / 5).toFixed(1);
+
   return(
     <>
       <SectionTitle title="Impact of one red-alert closure event"
-        sub={`${selLAs.length} local authorities · ${Math.round(params.schoolClosureFraction*100)}% of schools closed for ${params.redAlertDurationDays} day${params.redAlertDurationDays>1?"s":""}`}/>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:14}}>
+        sub={`Red alert over ${footprint} · ${selLAs.length} local authorities · ${Math.round(params.schoolClosureFraction*100)}% of schools closed for ${params.redAlertDurationDays} day${params.redAlertDurationDays>1?"s":""}`}/>
+
+      {/* Economic stat row */}
+      <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Economic impact</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}}>
         <Stat label="Schools closed" value={int(single.schoolsClosed||0)} color={C.accent}/>
         <Stat label="Pupils affected" value={num(single.pupilsAffected||0)} color={C.amber}/>
-        <Stat label="Families affected" value={num(single.familiesAffected||0)} color={C.teal}/>
-        <Stat label="Economic cost" value={gbp(single.economicImpact||0)} color={C.red} sub={`over ${params.redAlertDurationDays} day${params.redAlertDurationDays>1?"s":""}`}/>
-        <Stat label="Learning lost" value={`${num(single.learningDaysLost||0)}`} color={C.purple} sub="pupil-days"/>
+        <Stat label="Families disrupted" value={num(single.familiesAffected||0)} color={C.teal}
+          sub="phase & sibling adjusted"/>
+        <Stat label="Economic cost" value={gbp(single.economicImpact||0)} color={C.red}
+          sub={`over ${params.redAlertDurationDays} day${params.redAlertDurationDays>1?"s":""}`}/>
+      </div>
+
+      {/* Learning stat row */}
+      <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Learning impact</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
+        <Stat label="Days of instruction lost per pupil" value={`${daysLost}`} color={C.purple}
+          sub="= closure duration; applies to all affected pupils"/>
+        <Stat label="As share of school year" value={`${yearPct}%`} color={C.purple}
+          sub={`${daysLost}d of ${params.schoolDaysPerYear}d statutory year`}/>
+        <Stat label="Total pupil-days lost" value={num(single.learningDaysLost||0)} color={C.purple}
+          sub="across selected LAs"/>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"3fr 2fr",gap:12,marginBottom:12}}>
@@ -319,15 +420,12 @@ function SingleTab({single,topEconomic,sortedTable,tableSort,setTableSort,yearsE
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <Panel>
             <div style={{fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>What this means</div>
-            <Bullet c={C.red} k="Economic" v={`${gbp(single.economicImpact||0)} borne by families in lost work / replacement childcare across this single event.`}/>
-            <Bullet c={C.purple} k="Learning" v={`${num(single.learningDaysLost||0)} pupil-days of instruction lost — about ${(yearsEq*100).toFixed(2)}% of a school year per affected pupil.`}/>
-            <Bullet c={C.teal} k="Households" v={`${num(single.familiesAffected||0)} families need to arrange care for at least ${params.redAlertDurationDays} day${params.redAlertDurationDays>1?"s":""}.`}/>
+            <Bullet c={C.red} k="Economic" v={`${gbp(single.economicImpact||0)} borne by families in lost work / replacement childcare. Families are counted once per household (sibling discount applied) and weighted by phase — secondary-age pupils attract a lower supervision cost than primary-age.`}/>
+            <Bullet c={C.purple} k="Learning" v={`${daysLost} day${daysLost>1?"s":""} of instruction lost per affected pupil — ${yearPct}% of the statutory school year (${weeksLost} week${weeksLost==="1.0"?"":"s"} equivalent). Every affected pupil loses the same number of days regardless of age.`}/>
+            <Bullet c={C.teal} k="Households" v={`${num(single.familiesAffected||0)} families need to arrange care — adjusted for multiple children and for the lower supervision need of older secondary pupils.`}/>
           </Panel>
           <Panel style={{fontSize:11,color:C.muted,lineHeight:1.6}}>
-            A “single event” is one red heat-health alert. Adjust duration and the share of
-            schools that close in the bar above; pick which local authorities to include using
-            the selector top-right. The climate tab turns this per-event cost into an annual
-            total using projected alert frequency.
+            <b style={{color:C.text}}>Supervision discount:</b> Primary-age pupils (R–Y6) and SEND pupils require full caregiver cover (factor 1.0). Y7–9 partial ({Math.round(params.supervisionDiscountKS3*100)}%). Y10–11 low (20%). Sixth form minimal (5%). The economic cost reflects effective family disruption, not raw pupil count.
           </Panel>
         </div>
       </div>
@@ -338,45 +436,50 @@ function SingleTab({single,topEconomic,sortedTable,tableSort,setTableSort,yearsE
           <div style={{display:"flex",gap:4,alignItems:"center"}}>
             <span style={{color:C.muted,fontSize:11}}>Sort:</span>
             {[["economic","Cost"],["pupils","Pupils"],["schoolsClosed","Closed"],["name","Name"]].map(([k,l])=>(
-              <Seg key={k} label={l} active={tableSort===k} onClick={()=>setTableSort(k)}/>
+              <button key={k} onClick={()=>setTableSort(k)} style={{...miniBtn,
+                color:tableSort===k?C.accent:C.muted,border:`1px solid ${tableSort===k?C.accent:C.border}`}}>{l}</button>
             ))}
           </div>
         </div>
-        <div style={{overflowX:"auto",maxHeight:420,overflowY:"auto"}}>
+        <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-            <thead><tr style={{borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,background:C.panel}}>
-              {["Local authority","Schools","Pupils","Schools closed","Economic cost","Pupil-days lost"].map(h=>(
-                <th key={h} style={{color:C.muted,fontWeight:500,textAlign:h==="Local authority"?"left":"right",padding:"6px 10px",whiteSpace:"nowrap",fontSize:11}}>{h}</th>
-              ))}
-            </tr></thead>
+            <thead>
+              <tr style={{borderBottom:`1px solid ${C.border}`}}>
+                {["Local authority","Schools closed","Pupils affected","Families disrupted","Economic cost","Pupil-days lost"].map(h=>(
+                  <th key={h} style={{color:C.muted,textAlign:"right",padding:"6px 10px",fontWeight:500,whiteSpace:"nowrap",
+                    textAlign:h==="Local authority"?"left":"right"}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
             <tbody>
-              {sortedTable.map(r=>(
-                <tr key={r.dfeCode} style={{borderBottom:`1px solid ${C.border}22`}}>
-                  <td style={{padding:"6px 10px",color:C.text}}>{r.name}</td>
-                  <td style={{padding:"6px 10px",color:C.muted,textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{int(r.schools)}</td>
-                  <td style={{padding:"6px 10px",color:C.muted,textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{int(r.pupils)}</td>
-                  <td style={{padding:"6px 10px",color:C.accent,textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{int(r.schoolsClosed)}</td>
-                  <td style={{padding:"6px 10px",color:C.red,textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{gbp(r.economic)}</td>
-                  <td style={{padding:"6px 10px",color:C.purple,textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{int(r.pupilDays)}</td>
+              {sortedTable.map((r,i)=>(
+                <tr key={r.dfeCode} style={{borderBottom:`1px solid ${C.border}22`,
+                  background:i%2===0?"#0a0e1c":"transparent"}}>
+                  <td style={{padding:"7px 10px",color:C.text}}>{r.name}</td>
+                  <td style={{padding:"7px 10px",color:C.accent,textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{int(r.schoolsClosed)}</td>
+                  <td style={{padding:"7px 10px",color:C.amber,textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{num(r.pupils)}</td>
+                  <td style={{padding:"7px 10px",color:C.teal,textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{num(r.families)}</td>
+                  <td style={{padding:"7px 10px",color:C.red,textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{gbp(r.economic)}</td>
+                  <td style={{padding:"7px 10px",color:C.purple,textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{num(r.pupilDays)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {sortedTable.length===0&&<Empty msg="Select at least one local authority"/>}
         </div>
       </Panel>
     </>
   );
 }
 
-// ── Climate tab ──────────────────────────────────────────────────────────────
-function ClimateTab({decade,levelSeries,gwl,setGwl,baseEconomic,gwlEconomic,selLAs,params}){
-  const multiplier=baseEconomic>0?(gwlEconomic/baseEconomic):null;
+// ── Climate tab ───────────────────────────────────────────────────────────────
+function ClimateTab({decade,levelSeries,gwl,setGwl,baseEconomic,gwlEconomic,selLAs,params,footprint,
+  careerLoss,careerYearFraction,decadeLoss}){
+  const multiplier=baseEconomic>0?gwlEconomic/baseEconomic:null;
   const lvl=LEVELS.find(l=>l.key===gwl);
   return(
     <>
       <SectionTitle title="Impact per decade at a given level of global warming"
-        sub="Projected amber-alert frequency × your escalation & closure assumptions, totalled over 10 years"/>
+        sub={`${footprint} · projected amber-alert frequency × your escalation & closure assumptions, totalled over 10 years`}/>
 
       <Panel style={{marginBottom:14}}>
         <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>Global warming level (above pre-industrial)</div>
@@ -387,11 +490,23 @@ function ClimateTab({decade,levelSeries,gwl,setGwl,baseEconomic,gwlEconomic,selL
         </div>
       </Panel>
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}}>
+      {/* Economic stats */}
+      <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Economic impact · decade</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
         <Stat label="Closures per authority / decade" value={evn(decade.eventsPerAuth||0)} color={LVL_COLOR[gwl]} sub={`avg across ${selLAs.length} LAs`}/>
         <Stat label="Economic cost / decade" value={gbp(decade.economic||0)} color={C.red} sub="all selected LAs"/>
-        <Stat label="Learning lost / decade" value={num(decade.learning||0)} color={C.purple} sub="pupil-days"/>
-        <Stat label="vs recent climate" value={multiplier?`${multiplier.toFixed(1)}×`:"—"} color={C.amber} sub="economic cost"/>
+        <Stat label="vs recent climate" value={multiplier?`${multiplier.toFixed(1)}×`:"—"} color={C.amber} sub="economic cost multiplier"/>
+      </div>
+
+      {/* Learning stats */}
+      <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Learning impact · decade</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
+        <Stat label="Total pupil-days lost / decade" value={num(decade.learning||0)} color={C.purple}
+          sub="across selected LAs"/>
+        <Stat label="Closure days per pupil over school career" value={dp1(careerLoss)} color={C.purple}
+          sub={`at ${lvl?.label} warming · avg across LAs · 14-yr journey`}/>
+        <Stat label="Career loss as share of school year" value={`${(careerYearFraction*100).toFixed(1)}%`} color={C.purple}
+          sub={`${dp1(careerLoss)} days of ${params.schoolDaysPerYear}-day year`}/>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"3fr 2fr",gap:12,marginBottom:12}}>
@@ -421,7 +536,8 @@ function ClimateTab({decade,levelSeries,gwl,setGwl,baseEconomic,gwlEconomic,selL
               <XAxis dataKey="level" stroke={C.muted} tick={{fontSize:11,fill:C.muted}}/>
               <YAxis stroke={C.muted} tick={{fontSize:11,fill:C.muted}}/>
               <Tooltip content={<Tip fmt={evn}/>}/>
-              <Line type="monotone" dataKey="eventsPerAuth" name="Closures / authority / decade" stroke={C.accent} strokeWidth={2.5} dot={{fill:C.accent,r:4}}/>
+              <Line type="monotone" dataKey="eventsPerAuth" name="Closures / authority / decade"
+                stroke={C.accent} strokeWidth={2.5} dot={{fill:C.accent,r:4}}/>
             </LineChart>
           </ResponsiveContainer>
         </Panel>
@@ -431,8 +547,12 @@ function ClimateTab({decade,levelSeries,gwl,setGwl,baseEconomic,gwlEconomic,selL
         At <b style={{color:LVL_COLOR[gwl]}}>{lvl?.label}</b> of warming, a typical selected authority would face about
         <b style={{color:C.text}}> {evn(decade.eventsPerAuth||0)}</b> red-alert school closures per decade
         (assuming {Math.round(params.amberToRedFraction*100)}% of amber alerts escalate). Across all {selLAs.length} selected
-        authorities that totals <b style={{color:C.red}}>{gbp(decade.economic||0)}</b> and <b style={{color:C.purple}}>{num(decade.learning||0)} pupil-days </b>
-        of lost learning per decade{multiplier?<> — <b style={{color:C.amber}}>{multiplier.toFixed(1)}×</b> the recent-climate cost</>:null}.
+        authorities that totals <b style={{color:C.red}}>{gbp(decade.economic||0)}</b> in economic cost
+        and <b style={{color:C.purple}}>{num(decade.learning||0)} pupil-days</b> of lost learning per decade
+        {multiplier?<> — <b style={{color:C.amber}}>{multiplier.toFixed(1)}×</b> the recent-climate cost</>:null}.{" "}
+        A pupil completing their full school career (Reception through Year 13) at this warming level would accumulate
+        an average of <b style={{color:C.purple}}>{dp1(careerLoss)} closure days</b> — equivalent to{" "}
+        <b style={{color:C.purple}}>{(careerYearFraction*100).toFixed(1)}%</b> of a single school year.
       </Panel>
     </>
   );

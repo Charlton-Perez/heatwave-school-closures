@@ -32,13 +32,15 @@ export const PARAM_DEFS = {
     source: null,
   },
   schoolClosureFraction: {
-    default: 0.35, min: 0, max: 1, step: 0.05, kind: 'percent', evidenced: false,
+    default: 0.124, min: 0, max: 1, step: 0.001, kind: 'percent', evidenced: false,
     topControl: true,
     label: 'Schools closing on a red alert',
-    note: 'The primary control (shown at the top of the page). Share of schools in the '
-      + 'alerted regions that close. In the June 2026 red alert an estimated ~2,000 '
-      + 'schools closed, concentrated in the south and south-east; against the school '
-      + 'stock of that footprint this is roughly 35%, the default here.',
+    note: 'The primary control (shown at the top of the page, as a continuous slider). '
+      + 'Share of schools in the alerted regions that close. Calibrated to the current '
+      + '(2026) heatwave, in which an estimated ~1,200 schools were thought to have closed '
+      + 'across London, the South East, and the West and East Midlands — about 12.4% of '
+      + 'the ~9,700 schools in that footprint, the default here and the default region '
+      + 'selection above.',
     source: null,
   },
   redAlertDurationDays: {

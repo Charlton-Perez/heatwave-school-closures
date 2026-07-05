@@ -23,8 +23,10 @@ const REGION_SHORT = {
 const REGION_LAS = Object.fromEntries(
   REGIONS.map(r=>[r, LAS.filter(l=>l.region===r).map(l=>l.dfeCode)])
 );
-// Default event footprint: the common serious-heat footprint (south + capital).
-const DEFAULT_REGIONS = ["South East","London"];
+// Default event footprint: calibrated to the current (2026) heatwave, where an
+// estimated ~1,200 schools closed across these four regions (see model.js
+// schoolClosureFraction for the derivation).
+const DEFAULT_REGIONS = ["London","South East","West Midlands","East Midlands"];
 const DEFAULT_SELECTED = LAS.filter(l=>DEFAULT_REGIONS.includes(l.region)).map(l=>l.dfeCode);
 
 // ── palette / theme (house style) ───────────────────────────────────────────
@@ -322,8 +324,8 @@ export default function App(){
             <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.09em",alignSelf:"center"}}>
               Closure<br/>scenario
             </div>
-            <Slider label="Schools closing on red" value={params.schoolClosureFraction} min={0} max={1} step={0.05}
-              onChange={v=>set("schoolClosureFraction",v)} fmtVal={v=>`${Math.round(v*100)}%`} color={C.accent} width={220}/>
+            <Slider label="Schools closing on red" value={params.schoolClosureFraction} min={0} max={1} step={0.001}
+              onChange={v=>set("schoolClosureFraction",v)} fmtVal={v=>`${(v*100).toFixed(1)}%`} color={C.accent} width={220}/>
             <div style={{color:C.muted,fontSize:11,maxWidth:400,lineHeight:1.5}}>
               The main lever. Other assumptions — alert duration, amber→red escalation,
               cost, supervision, family size — sit in <b style={{color:C.text}}>Sources &amp; assumptions</b> at

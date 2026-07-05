@@ -31,7 +31,7 @@ All parameters are user-adjustable via the Sources & assumptions panel. They fal
 | Key | Default | Range | Description |
 |---|---|---|---|
 | `amberToRedFraction` | 0.30 | 0–1 | Share of amber alerts that escalate to red severity |
-| `schoolClosureFraction` | 0.35 | 0–1 | Share of schools that close during a red alert (the top-of-page control; ~35% ≈ the ~2,000 schools closed in the south/south-east during the June 2026 red alert) |
+| `schoolClosureFraction` | 0.124 | 0–1 (continuous) | Share of schools that close during a red alert (the top-of-page control; ~12.4% ≈ the ~1,200 schools closed across London, the South East, and the West/East Midlands during the current 2026 heatwave) |
 | `redAlertDurationDays` | 2 | 1–7 days | Duration of a closure event |
 | `supervisionDiscountKS3` | 0.55 | 0–1 | Supervision factor for Y7–9 families (see §3) |
 
@@ -227,7 +227,7 @@ The amber alert frequencies at each GWL come from the UKCRI file `heathealth_nul
 
 A single red heat-health alert is **not** national — UKHSA/Met Office alerts are issued for whole **regions**. Every local authority is tagged with one of the 9 English regions (`region` field in `localAuthorities.json`), derived in `build_data.mjs` from an ONS Local-Authority-District→Region lookup (`scripts/geo/lad_rgn_lookup.json`), with manual fallbacks for the reorganised unitaries whose CRI district codes predate the lookup.
 
-The dashboard's shared control bar lets the user choose **which regions are under the alert** (the event footprint). Selecting a region adds all its LAs to the active set; the LA-level "refine authorities" selector still allows finer adjustment. The default footprint is **South East + London** (52 LAs, ~2.5m pupils) — the common serious-heat footprint, and close to the July 2022 red-alert extent. "All England" remains available as the extreme (and rare) upper bound.
+The dashboard's shared control bar lets the user choose **which regions are under the alert** (the event footprint). Selecting a region adds all its LAs to the active set; the LA-level "refine authorities" selector still allows finer adjustment. The default footprint is **London + South East + West Midlands + East Midlands** (76 LAs, ~9,700 schools, ~4.1m pupils) — calibrated to the current 2026 heatwave, in which an estimated ~1,200 schools closed across those four regions (giving the ~12.4% default closure fraction above). "All England" remains available as the extreme (and rare) upper bound.
 
 Both tabs operate on the selected footprint:
 - **Single event** — impact of one red alert across the selected regions (no longer implicitly national).

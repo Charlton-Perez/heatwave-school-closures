@@ -292,11 +292,6 @@ export default function App(){
   const baseEconomic=levelSeries.find(l=>l.key==="0.61")?.economic||0;
   const gwlEconomic=levelSeries.find(l=>l.key===gwl)?.economic||0;
 
-  const [tableSort,setTableSort]=useState("economic");
-  const sortedTable=useMemo(()=>[...perLA].sort((a,b)=>
-    tableSort==="name"?a.name.localeCompare(b.name):b[tableSort]-a[tableSort]
-  ),[perLA,tableSort]);
-
   return(
     <div style={{minHeight:"100vh",background:C.bg,color:C.text,
       fontFamily:"'IBM Plex Sans',system-ui,sans-serif",paddingBottom:60}}>
@@ -323,16 +318,17 @@ export default function App(){
       {/* Shared closure-parameter + event-footprint bar */}
       <div style={{background:"#090c18",borderBottom:`1px solid ${C.border}`,padding:"14px 28px"}}>
         <div style={{maxWidth:1200,margin:"0 auto",display:"flex",flexDirection:"column",gap:14}}>
-          <div style={{display:"flex",gap:26,flexWrap:"wrap",alignItems:"flex-end"}}>
+          <div style={{display:"flex",gap:26,flexWrap:"wrap",alignItems:"center"}}>
             <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.09em",alignSelf:"center"}}>
               Closure<br/>scenario
             </div>
-            <Slider label="Red alert duration" value={params.redAlertDurationDays} min={1} max={7} step={1}
-              onChange={v=>set("redAlertDurationDays",v)} fmtVal={v=>`${v} day${v>1?"s":""}`} color={C.red}/>
             <Slider label="Schools closing on red" value={params.schoolClosureFraction} min={0} max={1} step={0.05}
-              onChange={v=>set("schoolClosureFraction",v)} fmtVal={v=>`${Math.round(v*100)}%`} color={C.accent}/>
-            <Slider label="Amber → red escalation" value={params.amberToRedFraction} min={0} max={1} step={0.05}
-              onChange={v=>set("amberToRedFraction",v)} fmtVal={v=>`${Math.round(v*100)}%`} color={C.amber}/>
+              onChange={v=>set("schoolClosureFraction",v)} fmtVal={v=>`${Math.round(v*100)}%`} color={C.accent} width={220}/>
+            <div style={{color:C.muted,fontSize:11,maxWidth:400,lineHeight:1.5}}>
+              The main lever. Other assumptions — alert duration, amber→red escalation,
+              cost, supervision, family size — sit in <b style={{color:C.text}}>Sources &amp; assumptions</b> at
+              the foot of the page.
+            </div>
           </div>
           <div style={{display:"flex",gap:20,flexWrap:"wrap",alignItems:"flex-end",
             borderTop:`1px solid ${C.border}`,paddingTop:14}}>
@@ -348,7 +344,7 @@ export default function App(){
       <div style={{maxWidth:1200,margin:"0 auto",padding:"18px 28px"}}>
 
         {tab==="single"?(
-          <SingleTab {...{single,perLA,topEconomic,sortedTable,tableSort,setTableSort,yearsEq,selLAs,params,footprint}}/>
+          <SingleTab {...{single,perLA,topEconomic,yearsEq,selLAs,params,footprint}}/>
         ):(
           <ClimateTab {...{decade,levelSeries,gwl,setGwl,baseEconomic,gwlEconomic,selLAs,params,footprint,
             careerLoss,careerYearFraction,decadeLoss}}/>
@@ -366,7 +362,7 @@ export default function App(){
 }
 
 // ── Single-event tab ─────────────────────────────────────────────────────────
-function SingleTab({single,topEconomic,sortedTable,tableSort,setTableSort,yearsEq,selLAs,params,footprint}){
+function SingleTab({single,topEconomic,yearsEq,selLAs,params,footprint}){
   const daysLost = params.redAlertDurationDays;
   const yearPct  = (daysLost / params.schoolDaysPerYear * 100).toFixed(1);
   const weeksLost = (daysLost / 5).toFixed(1);
@@ -420,7 +416,7 @@ function SingleTab({single,topEconomic,sortedTable,tableSort,setTableSort,yearsE
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <Panel>
             <div style={{fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>What this means</div>
-            <Bullet c={C.red} k="Economic" v={`${gbp(single.economicImpact||0)} borne by families in lost work / replacement childcare. Families are counted once per household (sibling discount applied) and weighted by phase — secondary-age pupils attract a lower supervision cost than primary-age.`}/>
+            <Bullet c={C.red} k="Economic" v={`${gbp(single.economicImpact||0)} in lost working time — valued at the Green Book opportunity cost of a caregiver's day. Families are counted once per household (sibling discount applied) and weighted by phase, so secondary-age pupils attract a lower cost than primary-age.`}/>
             <Bullet c={C.purple} k="Learning" v={`${daysLost} day${daysLost>1?"s":""} of instruction lost per affected pupil — ${yearPct}% of the statutory school year (${weeksLost} week${weeksLost==="1.0"?"":"s"} equivalent). Every affected pupil loses the same number of days regardless of age.`}/>
             <Bullet c={C.teal} k="Households" v={`${num(single.familiesAffected||0)} families need to arrange care — adjusted for multiple children and for the lower supervision need of older secondary pupils.`}/>
           </Panel>
@@ -429,44 +425,6 @@ function SingleTab({single,topEconomic,sortedTable,tableSort,setTableSort,yearsE
           </Panel>
         </div>
       </div>
-
-      <Panel>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <div style={{fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>Per local authority ({sortedTable.length})</div>
-          <div style={{display:"flex",gap:4,alignItems:"center"}}>
-            <span style={{color:C.muted,fontSize:11}}>Sort:</span>
-            {[["economic","Cost"],["pupils","Pupils"],["schoolsClosed","Closed"],["name","Name"]].map(([k,l])=>(
-              <button key={k} onClick={()=>setTableSort(k)} style={{...miniBtn,
-                color:tableSort===k?C.accent:C.muted,border:`1px solid ${tableSort===k?C.accent:C.border}`}}>{l}</button>
-            ))}
-          </div>
-        </div>
-        <div style={{overflowX:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-            <thead>
-              <tr style={{borderBottom:`1px solid ${C.border}`}}>
-                {["Local authority","Schools closed","Pupils affected","Families disrupted","Economic cost","Pupil-days lost"].map(h=>(
-                  <th key={h} style={{color:C.muted,textAlign:"right",padding:"6px 10px",fontWeight:500,whiteSpace:"nowrap",
-                    textAlign:h==="Local authority"?"left":"right"}}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sortedTable.map((r,i)=>(
-                <tr key={r.dfeCode} style={{borderBottom:`1px solid ${C.border}22`,
-                  background:i%2===0?"#0a0e1c":"transparent"}}>
-                  <td style={{padding:"7px 10px",color:C.text}}>{r.name}</td>
-                  <td style={{padding:"7px 10px",color:C.accent,textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{int(r.schoolsClosed)}</td>
-                  <td style={{padding:"7px 10px",color:C.amber,textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{num(r.pupils)}</td>
-                  <td style={{padding:"7px 10px",color:C.teal,textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{num(r.families)}</td>
-                  <td style={{padding:"7px 10px",color:C.red,textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{gbp(r.economic)}</td>
-                  <td style={{padding:"7px 10px",color:C.purple,textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{num(r.pupilDays)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
     </>
   );
 }
@@ -560,7 +518,7 @@ function ClimateTab({decade,levelSeries,gwl,setGwl,baseEconomic,gwlEconomic,selL
 
 // ── Sources & assumptions panel ──────────────────────────────────────────────
 function SourcesPanel({params,set}){
-  const rows=Object.entries(PARAM_DEFS);
+  const rows=Object.entries(PARAM_DEFS).filter(([,d])=>!d.topControl);
   return(
     <Panel style={{marginTop:14}}>
       <div style={{fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>

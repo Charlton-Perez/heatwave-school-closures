@@ -22,12 +22,13 @@ export const PARAM_DEFS = {
     source: null,
   },
   schoolClosureFraction: {
-    default: 0.50, min: 0, max: 1, step: 0.05, kind: 'percent', evidenced: false,
+    default: 0.35, min: 0, max: 1, step: 0.05, kind: 'percent', evidenced: false,
+    topControl: true,
     label: 'Schools closing on a red alert',
-    note: 'Modelling assumption. Not all schools close during a red alert (mitigation, '
-      + 'estate differences); this sets the proportion that do. Observed rate during the '
-      + 'June 2026 red alert: ~2.9% of state schools confirmed full or partial closure '
-      + '(IBTimes UK, 25 June 2026), though media-aggregated counts are likely incomplete.',
+    note: 'The primary control (shown at the top of the page). Share of schools in the '
+      + 'alerted regions that close. In the June 2026 red alert an estimated ~2,000 '
+      + 'schools closed, concentrated in the south and south-east; against the school '
+      + 'stock of that footprint this is roughly 35%, the default here.',
     source: null,
   },
   redAlertDurationDays: {
@@ -39,13 +40,16 @@ export const PARAM_DEFS = {
   },
   // ---- evidenced figures ----
   costPerFamilyPerDay: {
-    default: 70, min: 0, max: 300, step: 5, kind: 'gbp', evidenced: true,
-    label: 'Economic cost per family per closure day',
-    note: 'Proxy for a caregiver\'s lost work / replacement childcare for one day. '
-      + 'Coram\'s Childcare Survey 2025 puts unfunded full-day care at roughly £47–£95/day; '
-      + '£70 is a mid-range default. Applied only to families requiring supervision '
-      + '(see supervision discount below).',
-    source: { name: 'Coram Family & Childcare, Childcare Survey 2025', url: 'https://www.coram.org.uk/resource/childcare-survey-2025/' },
+    default: 145, min: 0, max: 400, step: 5, kind: 'gbp', evidenced: true,
+    label: 'Economic cost per disrupted family per closure day',
+    note: 'Valued as the opportunity cost of the caregiver\'s lost day, following HM '
+      + 'Treasury Green Book guidance on valuing time (lost output at the market wage). '
+      + 'Anchored to ONS ASHE 2024 median full-time gross earnings of £728/week '
+      + '(≈ £146/day). Applied only to supervision-adjusted families (see the supervision '
+      + 'factor). This supersedes the earlier childcare-replacement proxy (Coram Childcare '
+      + 'Survey 2025, ≈ £47–£95/day), which captured only paid substitute care rather than '
+      + 'lost economic output.',
+    source: { name: 'HM Treasury, The Green Book (value of time); ONS ASHE 2024', url: 'https://www.gov.uk/government/publications/the-green-book-appraisal-and-evaluation-in-central-government' },
   },
   childrenPerFamily: {
     default: 1.75, min: 1, max: 3, step: 0.05, kind: 'number', evidenced: true,

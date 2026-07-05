@@ -31,7 +31,7 @@ All parameters are user-adjustable via the Sources & assumptions panel. They fal
 | Key | Default | Range | Description |
 |---|---|---|---|
 | `amberToRedFraction` | 0.30 | 0–1 | Share of amber alerts that escalate to red severity |
-| `schoolClosureFraction` | 0.50 | 0–1 | Share of schools that close during a red alert |
+| `schoolClosureFraction` | 0.35 | 0–1 | Share of schools that close during a red alert (the top-of-page control; ~35% ≈ the ~2,000 schools closed in the south/south-east during the June 2026 red alert) |
 | `redAlertDurationDays` | 2 | 1–7 days | Duration of a closure event |
 | `supervisionDiscountKS3` | 0.55 | 0–1 | Supervision factor for Y7–9 families (see §3) |
 
@@ -39,7 +39,7 @@ All parameters are user-adjustable via the Sources & assumptions panel. They fal
 
 | Key | Default | Source |
 |---|---|---|
-| `costPerFamilyPerDay` | £70 | Coram Childcare Survey 2025 (range £47–£95/day) |
+| `costPerFamilyPerDay` | £145 | HM Treasury Green Book value of time; ONS ASHE 2024 median full-time earnings ≈ £146/day (supersedes the earlier £70 Coram childcare proxy) |
 | `childrenPerFamily` | 1.75 | ONS Families and Households 2024 |
 | `schoolDaysPerYear` | 190 | DfE statutory minimum |
 
@@ -100,7 +100,7 @@ familiesAffected = (primWeighted + ks3Weighted + ks4Weighted + ks5Weighted)
 economicImpact = familiesAffected × costPerFamilyPerDay × redAlertDurationDays
 ```
 
-`costPerFamilyPerDay` represents lost earnings or replacement childcare cost per household per day. It is applied only to the supervision-weighted family count, not to raw pupils — so the phase discount is already embedded before this multiplication.
+`costPerFamilyPerDay` is valued as the **opportunity cost of the caregiver's lost day** following HM Treasury Green Book guidance on the value of time (lost output at the market wage), anchored to ONS ASHE 2024 median full-time earnings (≈ £146/day). This supersedes the earlier childcare-replacement proxy, which valued only paid substitute care rather than lost economic output. It is applied only to the supervision-weighted family count, not to raw pupils — so the phase discount is already embedded before this multiplication.
 
 ---
 

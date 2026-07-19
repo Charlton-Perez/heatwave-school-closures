@@ -1,7 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Cell, Legend } from "recharts";
-import { MapContainer, TileLayer, CircleMarker } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, useMap } from "react-leaflet";
+import { latLngBounds } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import DATA from "./data/localAuthorities.json";
 import SCHOOL_DATA from "./data/schools.json";
@@ -252,6 +253,45 @@ function Slider({label,value,onChange,min,max,step,fmtVal,color=C.accent,width=1
   );
 }
 
+// ── small (i) info popover ──────────────────────────────────────────────────
+function InfoTip({text,width=300}){
+  const [open,setOpen]=useState(false);
+  return(
+    <span style={{position:"relative",display:"inline-block",verticalAlign:"middle"}}>
+      <button onClick={()=>setOpen(o=>!o)} title="What is this?" style={{
+        width:15,height:15,borderRadius:"50%",border:`1px solid ${open?C.accent:C.muted}`,
+        background:"transparent",color:open?C.accent:C.muted,fontSize:9,lineHeight:1,cursor:"pointer",
+        padding:0,marginLeft:6,display:"inline-flex",alignItems:"center",justifyContent:"center",
+        fontFamily:"'IBM Plex Sans',sans-serif",fontStyle:"italic",fontWeight:700,
+      }}>i</button>
+      {open&&(
+        <>
+          <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:250}}/>
+          <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:260,width,
+            background:"#0b1020",border:`1px solid ${C.border}`,borderRadius:8,padding:12,
+            color:C.text,fontSize:11,lineHeight:1.6,fontWeight:400,textTransform:"none",
+            letterSpacing:"normal",boxShadow:"0 12px 32px #000000aa"}}>
+            {text}
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
+const MATRIX_INFO=
+  "Each school is placed on a 6×3 grid. Rows are insulation class, derived "+
+  "from the building's age band and construction regulations at the time (1 = "+
+  "pre-1950 solid wall, 6 = current Building Regs standard). Columns are "+
+  "thermal mass (heavy masonry, medium/system-build, or lightweight framed). "+
+  "The combination determines the vulnerability cluster: e.g. a modern, "+
+  "lightweight, well-insulated building can trap heat with little thermal "+
+  "buffering (“trapped heat”), while an old, heavy masonry building "+
+  "accumulates heat slowly over a prolonged heatwave (“legacy "+
+  "accumulation”). This is a provisional, theory-based classification, "+
+  "not a validated risk score — see building-archetypes/docs/"+
+  "thermal_vulnerability_methodology.md for the full reasoning and known "+
+  "limitations.";
+
 // ── classification matrix (insulation class × thermal mass → cluster) ────────
 function ClassMatrix({insulationClass,massClass,size="normal"}){
   const cell=size==="small"?28:38;
@@ -347,7 +387,7 @@ function SchoolDetailCard({school,onClose}){
             <div style={{marginTop:16,padding:12,borderRadius:8,background:"#0a0f1c",
               border:`1px solid ${C.border}`}}>
               <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",
-                letterSpacing:"0.07em",marginBottom:8}}>Vulnerability cluster</div>
+                letterSpacing:"0.07em",marginBottom:8}}>Vulnerability cluster<InfoTip text={MATRIX_INFO}/></div>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
                 <span style={{width:12,height:12,borderRadius:"50%",
                   background:CLUSTER_COLOR[s.vulnerability_cluster]||C.muted}}/>
@@ -392,9 +432,32 @@ const Row=({label,value})=>(
   </div>
 );
 
+// ── frames the map to the current point set (selected regions/LAs, and the
+// highlighted cluster if one is picked), so the default zoom always shows
+// everything currently selected without manual panning ────────────────────
+function FitBounds({points}){
+  const map=useMap();
+  useEffect(()=>{
+    if(!points.length) return;
+    // Deferred a frame: at mount the map container hasn't taken its final
+    // flex/tab layout size yet, so fitBounds computes against a stale (often
+    // near-zero) size and picks a wildly zoomed-out level. invalidateSize()
+    // first, once layout has settled, fixes it.
+    const id=requestAnimationFrame(()=>{
+      map.invalidateSize();
+      const bounds=latLngBounds(points.map(p=>[p.lat,p.lon]));
+      map.fitBounds(bounds,{padding:[24,24],maxZoom:12});
+    });
+    return ()=>cancelAnimationFrame(id);
+  },[points,map]);
+  return null;
+}
+
 // ── Building vulnerability tab ─────────────────────────────────────────────
 function VulnerabilityTab({schools,footprint}){
   const [pick,setPick]=useState(null);
+  const [highlight,setHighlight]=useState(null); // cluster key, or null = show all
+  const toggleHighlight=key=>setHighlight(h=>h===key?null:key);
 
   const barData=useMemo(()=>{
     const counts=Object.fromEntries(CLUSTER_ORDER.map(c=>[c,0]));
@@ -402,13 +465,25 @@ function VulnerabilityTab({schools,footprint}){
     return CLUSTER_ORDER.map(c=>({key:c,name:CLUSTER_LABEL[c],count:counts[c]||0}));
   },[schools]);
 
-  const classified=schools.filter(s=>s.vulnerability_cluster).length;
-  const center=useMemo(()=>{
+  // Dots not in the highlighted cluster are drawn first & dimmed; the
+  // highlighted cluster is drawn last so it sits on top and stays vivid.
+  const mapSchools=useMemo(()=>{
     const withCoord=schools.filter(s=>s.lat&&s.lon);
-    if(!withCoord.length) return [52.5,-1.5];
-    return [withCoord.reduce((a,s)=>a+s.lat,0)/withCoord.length,
-            withCoord.reduce((a,s)=>a+s.lon,0)/withCoord.length];
-  },[schools]);
+    if(!highlight) return withCoord;
+    const on=withCoord.filter(s=>s.vulnerability_cluster===highlight);
+    const off=withCoord.filter(s=>s.vulnerability_cluster!==highlight);
+    return [...off,...on];
+  },[schools,highlight]);
+
+  const classified=schools.filter(s=>s.vulnerability_cluster).length;
+
+  // Points the map should frame: the highlighted cluster if one is picked,
+  // otherwise every shown school -- so the default view always captures the
+  // full extent of whatever regions/LAs/category are currently selected.
+  const boundsPoints=useMemo(()=>{
+    const withCoord=schools.filter(s=>s.lat&&s.lon);
+    return highlight?withCoord.filter(s=>s.vulnerability_cluster===highlight):withCoord;
+  },[schools,highlight]);
 
   return(
     <div>
@@ -426,8 +501,18 @@ function VulnerabilityTab({schools,footprint}){
 
       <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"stretch"}}>
         <Panel style={{flex:"1 1 340px",minWidth:300}}>
-          <div style={{color:C.muted,fontSize:11,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:12}}>
-            Classification into vulnerability categories
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{color:C.muted,fontSize:11,textTransform:"uppercase",letterSpacing:"0.07em"}}>
+              Classification into vulnerability categories<InfoTip text={MATRIX_INFO}/>
+            </div>
+            {highlight&&(
+              <button onClick={()=>setHighlight(null)} style={{...miniBtn,padding:"2px 8px",fontSize:10}}>
+                Clear filter
+              </button>
+            )}
+          </div>
+          <div style={{color:C.muted,fontSize:10,marginBottom:6}}>
+            Click a bar to highlight that category on the map
           </div>
           <ResponsiveContainer width="100%" height={340}>
             <BarChart data={barData} layout="vertical" margin={{left:10,right:10}}>
@@ -435,8 +520,13 @@ function VulnerabilityTab({schools,footprint}){
               <XAxis type="number" tick={{fill:C.muted,fontSize:10}} stroke={C.border}/>
               <YAxis type="category" dataKey="name" width={140} tick={{fill:C.muted,fontSize:10}} stroke={C.border}/>
               <Tooltip content={<Tip fmt={int}/>}/>
-              <Bar dataKey="count" name="Schools" radius={[0,4,4,0]}>
-                {barData.map(d=><Cell key={d.key} fill={CLUSTER_COLOR[d.key]}/>)}
+              <Bar dataKey="count" name="Schools" radius={[0,4,4,0]} cursor="pointer"
+                onClick={d=>toggleHighlight(d.key)}>
+                {barData.map(d=>(
+                  <Cell key={d.key} fill={CLUSTER_COLOR[d.key]}
+                    fillOpacity={!highlight||highlight===d.key?1:0.25}
+                    stroke={highlight===d.key?"#fff":"none"} strokeWidth={highlight===d.key?1.5:0}/>
+                ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -449,23 +539,31 @@ function VulnerabilityTab({schools,footprint}){
           <div style={{padding:"16px 20px 0"}}>
             <div style={{color:C.muted,fontSize:11,textTransform:"uppercase",letterSpacing:"0.07em"}}>
               School locations — coloured by heat risk category
+              {highlight&&<span style={{color:CLUSTER_COLOR[highlight],fontWeight:600}}> · {CLUSTER_LABEL[highlight]} highlighted</span>}
             </div>
           </div>
           <div style={{height:400,margin:"12px 0 0"}}>
-            <MapContainer center={center} zoom={7} style={{height:"100%",width:"100%"}} preferCanvas={true}>
+            <MapContainer center={[52.5,-1.5]} zoom={6} style={{height:"100%",width:"100%"}} preferCanvas={true}>
               <TileLayer attribution='&copy; OpenStreetMap contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"/>
-              {schools.filter(s=>s.lat&&s.lon).map(s=>(
-                <CircleMarker key={s.urn} center={[s.lat,s.lon]} radius={4}
-                  pathOptions={{color:CLUSTER_COLOR[s.vulnerability_cluster]||C.muted,
-                    fillColor:CLUSTER_COLOR[s.vulnerability_cluster]||C.muted,fillOpacity:0.85,weight:1}}
-                  eventHandlers={{click:()=>setPick(s)}}/>
-              ))}
+              <FitBounds points={boundsPoints}/>
+              {mapSchools.map(s=>{
+                const dim=highlight&&s.vulnerability_cluster!==highlight;
+                const color=CLUSTER_COLOR[s.vulnerability_cluster]||C.muted;
+                return(
+                  <CircleMarker key={s.urn} center={[s.lat,s.lon]} radius={dim?3:4}
+                    pathOptions={{color,fillColor:color,fillOpacity:dim?0.12:0.85,
+                      opacity:dim?0.25:1,weight:1}}
+                    eventHandlers={{click:()=>setPick(s)}}/>
+                );
+              })}
             </MapContainer>
           </div>
           <div style={{display:"flex",gap:12,flexWrap:"wrap",padding:"10px 20px 16px",fontSize:10,color:C.muted}}>
             {CLUSTER_ORDER.map(c=>(
-              <div key={c} style={{display:"flex",alignItems:"center",gap:5}}>
+              <div key={c} onClick={()=>toggleHighlight(c)} style={{display:"flex",alignItems:"center",gap:5,
+                cursor:"pointer",opacity:!highlight||highlight===c?1:0.4,
+                fontWeight:highlight===c?700:400,color:highlight===c?C.text:C.muted}}>
                 <span style={{width:8,height:8,borderRadius:"50%",background:CLUSTER_COLOR[c]}}/>
                 {CLUSTER_LABEL[c]}
               </div>

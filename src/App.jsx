@@ -1,7 +1,10 @@
 import { useState, useMemo } from "react";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Cell, Legend } from "recharts";
+import { MapContainer, TileLayer, CircleMarker } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
 import DATA from "./data/localAuthorities.json";
+import SCHOOL_DATA from "./data/schools.json";
 import {
   LEVELS, PARAM_DEFS, LEARNING_SOURCE, BASELINE_NOTE, defaultParams,
   perEventImpact, annualImpact, singleEventTotals, annualTotals,
@@ -10,6 +13,8 @@ import {
 
 const LAS  = DATA.localAuthorities;
 const META = DATA.meta;
+const SCHOOLS = SCHOOL_DATA.schools;
+const SCHOOLS_META = SCHOOL_DATA.meta;
 
 // ── regions (the 9 English regions UKHSA uses for heat-health alerts) ─────────
 const REGION_ORDER = ["London","South East","East of England","South West",
@@ -38,6 +43,32 @@ const C = {
 const LVL_COLOR = {"0.61":"#38bdf8","1.5":"#fbbf24","2":"#fb923c","3":"#f87171","4":"#dc2626"};
 const PAL = ["#fb923c","#f87171","#fbbf24","#38bdf8","#a78bfa","#34d399","#2dd4bf",
              "#e879f9","#60a5fa","#f472b6","#a3e635","#facc15","#818cf8","#4ade80"];
+
+// ── vulnerability cluster palette (yellow = lower risk → red = higher risk) ──
+// Order/severity matches WORST_CASE_RANK in building-archetypes/compute_site_flags.py
+const CLUSTER_ORDER = ["buffered","responsive","legacy_accumulation","system_build_risk","trapped_heat"];
+const CLUSTER_COLOR = {
+  buffered:"#facc15", responsive:"#fb923c", legacy_accumulation:"#f97316",
+  system_build_risk:"#ef4444", trapped_heat:"#b91c1c",
+};
+const CLUSTER_LABEL = {
+  buffered:"Buffered", responsive:"Responsive",
+  legacy_accumulation:"Legacy accumulation", system_build_risk:"System-build risk",
+  trapped_heat:"Trapped heat",
+};
+// Two-axis classification matrix: rows = insulation class 1(best)→6(worst),
+// cols = thermal mass. Mirrors classify_vulnerability() in
+// building-archetypes/classify_thermal_performance.py
+const MASS_COLS = ["heavy","medium","light"];
+const MASS_LABEL = {heavy:"Heavy mass",medium:"Medium mass",light:"Light mass"};
+function matrixCluster(insulationClass, massClass){
+  const ic=insulationClass;
+  if(ic>=5&&massClass==="light") return "trapped_heat";
+  if(ic<=2&&massClass==="heavy") return "legacy_accumulation";
+  if(ic<=3&&massClass==="medium") return "system_build_risk";
+  if(massClass==="heavy"||(massClass==="medium"&&ic>=4)) return "buffered";
+  return "responsive";
+}
 
 // ── formatters ───────────────────────────────────────────────────────────────
 const gbp = n=>{
@@ -221,6 +252,233 @@ function Slider({label,value,onChange,min,max,step,fmtVal,color=C.accent,width=1
   );
 }
 
+// ── classification matrix (insulation class × thermal mass → cluster) ────────
+function ClassMatrix({insulationClass,massClass,size="normal"}){
+  const cell=size==="small"?28:38;
+  return(
+    <div style={{display:"inline-block"}}>
+      <div style={{display:"flex",gap:2,marginBottom:2,marginLeft:size==="small"?46:58}}>
+        {MASS_COLS.map(m=>(
+          <div key={m} style={{width:cell,textAlign:"center",color:C.muted,
+            fontSize:size==="small"?8:9,lineHeight:1.2}}>{MASS_LABEL[m].split(" ")[0]}</div>
+        ))}
+      </div>
+      {[1,2,3,4,5,6].map(ic=>(
+        <div key={ic} style={{display:"flex",gap:2,alignItems:"center",marginBottom:2}}>
+          <div style={{width:size==="small"?44:56,textAlign:"right",paddingRight:6,
+            color:C.muted,fontSize:size==="small"?8:9}}>class {ic}</div>
+          {MASS_COLS.map(m=>{
+            const cl=matrixCluster(ic,m);
+            const hit=insulationClass===ic&&massClass===m;
+            return(
+              <div key={m} style={{width:cell,height:cell,borderRadius:4,
+                background:CLUSTER_COLOR[cl],opacity:hit?1:0.28,position:"relative",
+                border:hit?"2px solid #fff":"1px solid #00000030"}}>
+                {hit&&<div style={{position:"absolute",inset:0,display:"flex",
+                  alignItems:"center",justifyContent:"center"}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:"#0a0f1c",
+                    border:"1.5px solid #fff"}}/>
+                </div>}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── school detail card (click a map dot) ──────────────────────────────────────
+function SchoolDetailCard({school,onClose}){
+  if(!school)return null;
+  const s=school;
+  const mapQ=encodeURIComponent(`${s.name}, ${s.postcode||s.la}, UK`);
+  const mapSrc=`https://maps.google.com/maps?q=${mapQ}&t=k&z=18&output=embed`;
+  const fields=[
+    ["Premise use",s.premise_use],["Premise type",s.premise_type],
+    ["Age band",s.age_band],["Premise age (Verisk)",s.premise_age],["Premise year",s.premise_year],
+    ["Wall type",s.wall_type],["Wall construction",s.wall_construction_type],
+    ["Roof type",s.roof_type],["Glazing type",s.glazing_type],
+    ["Height (m)",s.height],["Floors",s.premise_floor_count],
+    ["Premise area (m²)",s.premise_area],["Building area (m²)",s.building_area],
+    ["Basement",s.basement],["Listed grade",s.listed_grade],
+    ["EPC rating",s.energy_efficiency_rating],
+    ["Buildings on site",s.site_building_count],
+    ["Mixed-era site",s.site_mixed_estate?"Yes":"No"],
+    ["Site worst case",s.site_worst_case_label],
+    ["Classification confidence",s.classification_confidence],
+    ["TOID",s.toid],
+  ].filter(([,v])=>v!==null&&v!==undefined&&v!=="");
+
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000000b0",
+      zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.panel,
+        border:`1px solid ${C.border}`,borderRadius:12,maxWidth:920,width:"100%",
+        maxHeight:"90vh",overflowY:"auto",padding:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",
+          padding:"16px 20px",borderBottom:`1px solid ${C.border}`}}>
+          <div>
+            <div style={{color:"#fff",fontSize:16,fontWeight:700}}>{s.name}</div>
+            <div style={{color:C.muted,fontSize:11,marginTop:3}}>
+              {s.type} · {s.phase} · {s.la}, {s.region}
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:"transparent",border:`1px solid ${C.border}`,
+            borderRadius:6,color:C.muted,fontSize:13,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+        </div>
+
+        <div style={{display:"flex",gap:20,padding:20,flexWrap:"wrap"}}>
+          <div style={{flex:"1 1 380px",minWidth:300}}>
+            <div style={{borderRadius:8,overflow:"hidden",border:`1px solid ${C.border}`,
+              aspectRatio:"4/3",background:"#000"}}>
+              <iframe title="aerial" src={mapSrc} width="100%" height="100%" style={{border:0}}
+                loading="lazy" referrerPolicy="no-referrer-when-downgrade"/>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:12,fontSize:12}}>
+              <Row label="Pupils" value={s.pupils!=null?int(s.pupils):"—"}/>
+              <Row label="Capacity" value={s.capacity!=null?int(s.capacity):"—"}/>
+              <Row label="Website" value={s.website
+                ? <a href={/^https?:\/\//.test(s.website)?s.website:`https://${s.website}`}
+                    target="_blank" rel="noreferrer" style={{color:C.blue}}>{s.website}</a> : "—"}/>
+              <Row label="Postcode" value={s.postcode||"—"}/>
+            </div>
+
+            <div style={{marginTop:16,padding:12,borderRadius:8,background:"#0a0f1c",
+              border:`1px solid ${C.border}`}}>
+              <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",
+                letterSpacing:"0.07em",marginBottom:8}}>Vulnerability cluster</div>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                <span style={{width:12,height:12,borderRadius:"50%",
+                  background:CLUSTER_COLOR[s.vulnerability_cluster]||C.muted}}/>
+                <span style={{color:"#fff",fontSize:14,fontWeight:600}}>
+                  {s.vulnerability_label||"Not classified"}
+                </span>
+              </div>
+              {s.insulation_class!=null&&s.thermal_mass_class&&(
+                <ClassMatrix insulationClass={s.insulation_class} massClass={s.thermal_mass_class} size="small"/>
+              )}
+              {s.site_mixed_estate&&s.site_worst_case_cluster!==s.vulnerability_cluster&&(
+                <div style={{marginTop:10,fontSize:11,color:C.amber,lineHeight:1.5}}>
+                  ⚠ Mixed-era site — the worst building on this site classifies as{" "}
+                  <b>{s.site_worst_case_label}</b>.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={{flex:"1 1 300px",minWidth:260}}>
+            <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",
+              letterSpacing:"0.07em",marginBottom:8}}>Verisk building record</div>
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              {fields.map(([k,v])=>(
+                <div key={k} style={{display:"flex",justifyContent:"space-between",gap:10,
+                  fontSize:11,padding:"5px 0",borderBottom:`1px solid ${C.border}`}}>
+                  <span style={{color:C.muted}}>{k}</span>
+                  <span style={{color:C.text,textAlign:"right"}}>{String(v)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+const Row=({label,value})=>(
+  <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
+    <span style={{color:C.muted}}>{label}</span>
+    <span style={{color:C.text}}>{value}</span>
+  </div>
+);
+
+// ── Building vulnerability tab ─────────────────────────────────────────────
+function VulnerabilityTab({schools,footprint}){
+  const [pick,setPick]=useState(null);
+
+  const barData=useMemo(()=>{
+    const counts=Object.fromEntries(CLUSTER_ORDER.map(c=>[c,0]));
+    schools.forEach(s=>{ if(s.vulnerability_cluster) counts[s.vulnerability_cluster]=(counts[s.vulnerability_cluster]||0)+1; });
+    return CLUSTER_ORDER.map(c=>({key:c,name:CLUSTER_LABEL[c],count:counts[c]||0}));
+  },[schools]);
+
+  const classified=schools.filter(s=>s.vulnerability_cluster).length;
+  const center=useMemo(()=>{
+    const withCoord=schools.filter(s=>s.lat&&s.lon);
+    if(!withCoord.length) return [52.5,-1.5];
+    return [withCoord.reduce((a,s)=>a+s.lat,0)/withCoord.length,
+            withCoord.reduce((a,s)=>a+s.lon,0)/withCoord.length];
+  },[schools]);
+
+  return(
+    <div>
+      <div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:16}}>
+        <Stat label="Schools shown" value={int(schools.length)} sub={footprint}/>
+        <Stat label="Classified" value={`${classified?((classified/schools.length)*100).toFixed(0):0}%`}
+          sub={`${int(classified)} of ${int(schools.length)}`}/>
+        <Stat label="Trapped heat / system-build risk" color={C.red}
+          value={int((barData.find(b=>b.key==="trapped_heat")?.count||0)+(barData.find(b=>b.key==="system_build_risk")?.count||0))}
+          sub="highest-risk clusters"/>
+        <Stat label="Mixed-era sites" color={C.amber}
+          value={int(schools.filter(s=>s.site_mixed_estate).length)}
+          sub="span 2+ construction eras"/>
+      </div>
+
+      <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"stretch"}}>
+        <Panel style={{flex:"1 1 340px",minWidth:300}}>
+          <div style={{color:C.muted,fontSize:11,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:12}}>
+            Classification into vulnerability categories
+          </div>
+          <ResponsiveContainer width="100%" height={340}>
+            <BarChart data={barData} layout="vertical" margin={{left:10,right:10}}>
+              <CartesianGrid stroke={C.border} horizontal={false}/>
+              <XAxis type="number" tick={{fill:C.muted,fontSize:10}} stroke={C.border}/>
+              <YAxis type="category" dataKey="name" width={140} tick={{fill:C.muted,fontSize:10}} stroke={C.border}/>
+              <Tooltip content={<Tip fmt={int}/>}/>
+              <Bar dataKey="count" name="Schools" radius={[0,4,4,0]}>
+                {barData.map(d=><Cell key={d.key} fill={CLUSTER_COLOR[d.key]}/>)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          <div style={{marginTop:14}}>
+            <ClassMatrix insulationClass={null} massClass={null} size="small"/>
+          </div>
+        </Panel>
+
+        <Panel style={{flex:"1 1 420px",minWidth:320,padding:0,overflow:"hidden"}}>
+          <div style={{padding:"16px 20px 0"}}>
+            <div style={{color:C.muted,fontSize:11,textTransform:"uppercase",letterSpacing:"0.07em"}}>
+              School locations — coloured by heat risk category
+            </div>
+          </div>
+          <div style={{height:400,margin:"12px 0 0"}}>
+            <MapContainer center={center} zoom={7} style={{height:"100%",width:"100%"}} preferCanvas={true}>
+              <TileLayer attribution='&copy; OpenStreetMap contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"/>
+              {schools.filter(s=>s.lat&&s.lon).map(s=>(
+                <CircleMarker key={s.urn} center={[s.lat,s.lon]} radius={4}
+                  pathOptions={{color:CLUSTER_COLOR[s.vulnerability_cluster]||C.muted,
+                    fillColor:CLUSTER_COLOR[s.vulnerability_cluster]||C.muted,fillOpacity:0.85,weight:1}}
+                  eventHandlers={{click:()=>setPick(s)}}/>
+              ))}
+            </MapContainer>
+          </div>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap",padding:"10px 20px 16px",fontSize:10,color:C.muted}}>
+            {CLUSTER_ORDER.map(c=>(
+              <div key={c} style={{display:"flex",alignItems:"center",gap:5}}>
+                <span style={{width:8,height:8,borderRadius:"50%",background:CLUSTER_COLOR[c]}}/>
+                {CLUSTER_LABEL[c]}
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </div>
+
+      <SchoolDetailCard school={pick} onClose={()=>setPick(null)}/>
+    </div>
+  );
+}
+
 // ── main app ─────────────────────────────────────────────────────────────────
 export default function App(){
   const [tab,setTab]=useState("single");
@@ -233,6 +491,11 @@ export default function App(){
     const s=new Set(selected);
     return LAS.filter(l=>s.has(l.dfeCode));
   },[selected]);
+
+  // Building-vulnerability tab reuses the same selected-LA state; schools.json
+  // stores `la` as a name, so translate the selected dfeCodes to LA names.
+  const selLANames=useMemo(()=>new Set(selLAs.map(l=>l.laName)),[selLAs]);
+  const visibleSchools=useMemo(()=>SCHOOLS.filter(s=>selLANames.has(s.la)),[selLANames]);
 
   // Human-readable description of the event footprint (which regions are covered)
   const footprint=useMemo(()=>{
@@ -313,6 +576,7 @@ export default function App(){
           <div style={{display:"flex",gap:6}}>
             <Seg label="Single event" active={tab==="single"} onClick={()=>setTab("single")}/>
             <Seg label="Climate outlook" active={tab==="climate"} onClick={()=>setTab("climate")} color={C.red}/>
+            <Seg label="Building vulnerability" active={tab==="vuln"} onClick={()=>setTab("vuln")} color={C.amber}/>
           </div>
         </div>
       </div>
@@ -320,18 +584,20 @@ export default function App(){
       {/* Shared closure-parameter + event-footprint bar */}
       <div style={{background:"#090c18",borderBottom:`1px solid ${C.border}`,padding:"14px 28px"}}>
         <div style={{maxWidth:1200,margin:"0 auto",display:"flex",flexDirection:"column",gap:14}}>
-          <div style={{display:"flex",gap:26,flexWrap:"wrap",alignItems:"center"}}>
-            <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.09em",alignSelf:"center"}}>
-              Closure<br/>scenario
+          {tab!=="vuln"&&(
+            <div style={{display:"flex",gap:26,flexWrap:"wrap",alignItems:"center"}}>
+              <div style={{color:C.muted,fontSize:10,textTransform:"uppercase",letterSpacing:"0.09em",alignSelf:"center"}}>
+                Closure<br/>scenario
+              </div>
+              <Slider label="Schools closing on red" value={params.schoolClosureFraction} min={0} max={1} step={0.001}
+                onChange={v=>set("schoolClosureFraction",v)} fmtVal={v=>`${(v*100).toFixed(1)}%`} color={C.accent} width={220}/>
+              <div style={{color:C.muted,fontSize:11,maxWidth:400,lineHeight:1.5}}>
+                The main lever. Other assumptions — alert duration, amber→red escalation,
+                cost, supervision, family size — sit in <b style={{color:C.text}}>Sources &amp; assumptions</b> at
+                the foot of the page.
+              </div>
             </div>
-            <Slider label="Schools closing on red" value={params.schoolClosureFraction} min={0} max={1} step={0.001}
-              onChange={v=>set("schoolClosureFraction",v)} fmtVal={v=>`${(v*100).toFixed(1)}%`} color={C.accent} width={220}/>
-            <div style={{color:C.muted,fontSize:11,maxWidth:400,lineHeight:1.5}}>
-              The main lever. Other assumptions — alert duration, amber→red escalation,
-              cost, supervision, family size — sit in <b style={{color:C.text}}>Sources &amp; assumptions</b> at
-              the foot of the page.
-            </div>
-          </div>
+          )}
           <div style={{display:"flex",gap:20,flexWrap:"wrap",alignItems:"flex-end",
             borderTop:`1px solid ${C.border}`,paddingTop:14}}>
             <RegionSelector selected={selected} onChange={setSelected}/>
@@ -347,13 +613,15 @@ export default function App(){
 
         {tab==="single"?(
           <SingleTab {...{single,perLA,topEconomic,yearsEq,selLAs,params,footprint}}/>
-        ):(
+        ):tab==="climate"?(
           <ClimateTab {...{decade,levelSeries,gwl,setGwl,baseEconomic,gwlEconomic,selLAs,params,footprint,
             careerLoss,careerYearFraction,decadeLoss}}/>
+        ):(
+          <VulnerabilityTab schools={visibleSchools} footprint={footprint}/>
         )}
 
         {/* Sources & assumptions */}
-        <SourcesPanel params={params} set={set}/>
+        {tab!=="vuln"&&<SourcesPanel params={params} set={set}/>}
 
         <div style={{color:C.muted,fontSize:10,marginTop:18,lineHeight:1.6}}>
           {META.note} Generated {META.generated}. This is an illustrative planning tool, not a forecast.

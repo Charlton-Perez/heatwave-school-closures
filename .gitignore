@@ -4,5 +4,10 @@ dist/
 .vercel
 __pycache__/
 *.pyc
+.DS_Store
 # Raw source extracts are large / re-downloadable; the built JSON is committed.
 data/raw/edubasealldata*.csv
+# Verisk UKBuildings / Digimap Aerial data is licensed (no redistribution) and
+# multi-GB; only the code that produces it and the compact dashboard JSON
+# (src/data/schools.json) are committed. See building-archetypes/docs.
+building-archetypes/data/

@@ -1,0 +1,11 @@
+# Large OS/Verisk building downloads (national NGD/MasterMap/UKBuildings) — never commit
+# (raw Digimap order folders, whole EULA/docs included — not just the geodata)
+data/raw_os/
+data/Download_*/
+*.gpkg
+*.gz
+*.zip
+
+# Combined per-school output — regenerable from the gpkg orders + spine.csv,
+# but sizeable; commit a sample or summary instead if needed.
+data/school_buildings.csv
